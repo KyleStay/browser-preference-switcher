@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Browser Preference Switcher</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <h1>Browser Preference</h1>
+      <p id="site" class="site">Checking this site…</p>
+
+      <section class="identity" aria-live="polite">
+        <span class="eyebrow">Browser in request headers</span>
+        <strong id="identity">Loading…</strong>
+        <span id="reason" class="muted"></span>
+      </section>
+
+      <label class="toggle-row" for="enabled">
+        <span>Automatic switching</span>
+        <input id="enabled" type="checkbox">
+      </label>
+
+      <label class="field" for="platform">
+        <span>Reported operating system</span>
+        <select id="platform">
+          <option value="auto">Keep this device's OS (default)</option>
+          <option value="mac">macOS</option>
+          <option value="windows">Windows</option>
+          <option value="linux">Linux</option>
+        </select>
+      </label>
+
+      <div class="version-row">
+        <span id="version-status" class="muted">Version data</span>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+      <p id="message" class="message" role="status"></p>
+      <p class="footnote">Only request headers change. Page scripts may still identify Brave.</p>
+      <p class="footnote">Version checks contact browser vendors for release data only.</p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
