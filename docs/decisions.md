@@ -44,6 +44,12 @@ At the user's request, report Safari on `apple.com` and `icloud.com` and their s
 
 The default rules use Google and YouTube domains → Chrome, Microsoft web domains → Edge, and Apple and iCloud domains → Safari at the user's request. The selected operating-system setting applies to all of them.
 
+### D10 — Require first-use disclosure and acceptance for the store release
+
+Before active-tab URL handling, device-platform detection, request-identity switching, or vendor-version requests, the popup presents a prominent data-use notice with an explicit **Agree and enable** action. This applies to new installations and prototype users without recorded acceptance. The accepted notice version is stored locally. Header mappings and OS preferences are unchanged; switching starts only after acceptance and remains reversible through the popup toggle or browser extension controls.
+
+The public release requests version data only for its active Chrome, Edge, and Safari profiles. Firefox remains a dormant source catalog profile under D5, with no Mozilla host permission or scheduled fetch until a user-facing Firefox feature justifies that access. See the [privacy policy](../PRIVACY.md) and [Chrome's disclosure requirements](https://developer.chrome.com/docs/webstore/program-policies/user-data-faq).
+
 ## Working assumptions
 
 - “Latest public version” means the current Stable release, not a beta, dev, or nightly build.

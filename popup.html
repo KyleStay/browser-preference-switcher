@@ -9,22 +9,29 @@
   <body>
     <main>
       <h1>Browser Preference</h1>
-      <p id="site" class="site">Checking this site…</p>
+      <p id="site" class="site" aria-live="polite" aria-atomic="true">Loading preferences…</p>
 
-      <section class="identity" aria-live="polite">
-        <span class="eyebrow">Browser in request headers</span>
+      <section id="consent-card" class="consent-card" aria-labelledby="consent-heading" hidden>
+        <h2 id="consent-heading">Before you continue</h2>
+        <p>This extension reads the active tab’s address locally to show its site and configured request identity. Addresses are not stored or sent to the developer. Your settings stay on this device. Release checks contact Google, Microsoft, and Apple; those servers receive normal connection details. It changes request headers on selected HTTPS sites, not the browser engine or JavaScript identity.</p>
+        <button id="accept-consent" type="button">Agree and enable</button>
+        <p id="consent-message" class="message" role="status" aria-live="polite" aria-atomic="true"></p>
+      </section>
+
+      <section class="identity" aria-live="polite" aria-atomic="true">
+        <span class="eyebrow">Configured request identity</span>
         <strong id="identity">Loading…</strong>
         <span id="reason" class="muted"></span>
       </section>
 
       <label class="toggle-row" for="enabled">
         <span>Automatic switching</span>
-        <input id="enabled" type="checkbox">
+        <input id="enabled" type="checkbox" disabled>
       </label>
 
       <label class="field" for="platform">
         <span>Reported operating system</span>
-        <select id="platform">
+        <select id="platform" disabled>
           <option value="auto">Keep this device's OS (default)</option>
           <option value="mac">macOS</option>
           <option value="windows">Windows</option>
@@ -34,11 +41,12 @@
 
       <div class="version-row">
         <span id="version-status" class="muted">Version data</span>
-        <button id="refresh" type="button">Refresh</button>
+        <button id="refresh" type="button" disabled>Refresh</button>
       </div>
-      <p id="message" class="message" role="status"></p>
+      <p id="message" class="message" role="status" aria-live="polite" aria-atomic="true"></p>
       <p class="footnote">Only request headers change. Page scripts may still identify Brave.</p>
       <p class="footnote">Version checks contact browser vendors for release data only.</p>
+      <p class="privacy-link"><a href="https://github.com/KyleStay/browser-preference-switcher/blob/main/PRIVACY.md" target="_blank" rel="noopener">Privacy policy</a></p>
     </main>
     <script src="popup.js"></script>
   </body>

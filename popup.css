@@ -8,6 +8,9 @@ main { padding: 16px; }
 h1 { margin: 0 0 2px; font-size: 16px; }
 .site { margin: 0 0 14px; overflow-wrap: anywhere; color: #697386; }
 .identity { display: grid; gap: 3px; padding: 12px; border: 1px solid #858b982e; border-radius: 9px; }
+.consent-card { display: grid; gap: 8px; padding: 12px; border: 1px solid #858b9855; border-radius: 9px; }
+.consent-card h2 { margin: 0; font-size: 15px; }
+.consent-card p { margin: 0; }
 .eyebrow { color: #697386; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .identity strong { font-size: 15px; }
 .muted { color: #697386; }
@@ -18,5 +21,11 @@ select { width: 100%; padding: 7px 8px; border: 1px solid #858b9855; border-radi
 .version-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 15px; }
 button { padding: 6px 10px; border: 1px solid #858b9855; border-radius: 6px; background: transparent; cursor: pointer; }
 button:disabled { opacity: .55; cursor: wait; }
-.message { min-height: 1.2em; margin: 8px 0 0; color: #b42318; }
+.message { min-height: 1.2em; margin: 8px 0 0; }
+.message.error { color: #b42318; }
 .footnote { margin: 8px 0 0; color: #697386; font-size: 11px; }
+.privacy-link { margin: 10px 0 0; font-size: 11px; }
+
+@media (prefers-color-scheme: dark) {
+  .message.error { color: #ff7b72; }
+}

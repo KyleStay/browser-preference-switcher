@@ -1,0 +1,13 @@
+{
+  "name": "browser-preference-switcher",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Dependency-free regression checks for the extension service worker.",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "ci": "node scripts/local-ci.cjs",
+    "ci:checks": "node scripts/local-ci.cjs --checks-only",
+    "ci:browser": "node scripts/local-ci.cjs --browser-only",
+    "package": "python3 scripts/package-extension.py"
+  }
+}
