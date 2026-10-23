@@ -44,7 +44,9 @@ test("committed publishing guide embeds the current validated upload archive", (
     " refreshed = module._refresh_toolkit_html(html, json.loads(json.dumps(data)), root=root, version='0.1.3', archive_path=archive_path, archive_data=raw, digest=hashlib.sha256(raw).hexdigest(), icon_data=b'icon', screenshots=[])",
     " refreshed_data = json.loads(re.search(r'<script id=\"toolkit-data\" type=\"application/json\">(.*?)</script>', refreshed, re.S).group(1))",
     " refreshed_fields = {f['id']: f['text'] for f in refreshed_data['fields']}",
-    " assert (root / refreshed_fields['zip-path']).resolve() == archive_path.resolve()"
+    " assert (root / refreshed_fields['zip-path']).resolve() == archive_path.resolve()",
+    " assert refreshed_fields['verify-command'].endswith(' && open dist/publishing-kit-0.1.3/index.html')",
+    " assert 'npm run ci && npm run package && python3 scripts/package-publishing-kit.py' in refreshed_fields['verify-command']"
   ].join("\n");
   const result = spawnSync("python3", ["-c", script, projectRoot], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
