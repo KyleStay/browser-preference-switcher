@@ -35,7 +35,16 @@ test("committed publishing guide embeds the current validated upload archive", (
     " assert archive.testzip() is None",
     " assert json.loads(archive.read('manifest.json')) == json.loads((root / 'manifest.json').read_text())",
     " for name in archive.namelist(): assert archive.read(name) == (root / name).read_bytes(), name",
-    "assert fields['zip-path'] == 'dist/browser-preference-switcher-' + json.loads((root / 'manifest.json').read_text())['version'] + '.zip'"
+    "assert fields['zip-path'] == 'dist/browser-preference-switcher-' + json.loads((root / 'manifest.json').read_text())['version'] + '.zip'",
+    "import importlib.util",
+    "spec = importlib.util.spec_from_file_location('kit', root / 'scripts/package-publishing-kit.py')",
+    "module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)",
+    "for folder in [root / 'release', root.parent / 'external-output']:",
+    " archive_path = folder / 'browser-preference-switcher-0.1.3.zip'",
+    " refreshed = module._refresh_toolkit_html(html, json.loads(json.dumps(data)), root=root, version='0.1.3', archive_path=archive_path, archive_data=raw, digest=hashlib.sha256(raw).hexdigest(), icon_data=b'icon', screenshots=[])",
+    " refreshed_data = json.loads(re.search(r'<script id=\"toolkit-data\" type=\"application/json\">(.*?)</script>', refreshed, re.S).group(1))",
+    " refreshed_fields = {f['id']: f['text'] for f in refreshed_data['fields']}",
+    " assert (root / refreshed_fields['zip-path']).resolve() == archive_path.resolve()"
   ].join("\n");
   const result = spawnSync("python3", ["-c", script, projectRoot], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
