@@ -117,13 +117,13 @@ def _refresh_toolkit_html(
     screenshots: list[dict[str, str]],
 ) -> str:
     command = (
-        f"cd {shlex.quote(str(root))}\n"
+        "cd /path/to/browser-preference-switcher\n"
         "npm run ci && npm run package && python3 scripts/package-publishing-kit.py"
         f" && open {shlex.quote(str(Path('dist') / f'publishing-kit-{version}' / 'index.html'))}"
     )
     _set_field(data, "verify-command", command)
-    _set_field(data, "zip-path", str(archive_path))
-    _set_field(data, "screenshots-path", str(root / "store" / "screenshots"))
+    _set_field(data, "zip-path", str(Path("dist") / archive_path.name))
+    _set_field(data, "screenshots-path", "store/screenshots")
     _set_field(
         data,
         "zip-checksum",

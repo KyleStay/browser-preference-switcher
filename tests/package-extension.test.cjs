@@ -21,6 +21,26 @@ const archiveNames = [
   "icons/icon-128.png"
 ];
 
+test("committed publishing guide embeds the current validated upload archive", () => {
+  const script = [
+    "import base64, hashlib, io, json, re, sys, zipfile",
+    "from pathlib import Path",
+    "root = Path(sys.argv[1])",
+    "html = (root / 'docs/publish-toolkit.html').read_text()",
+    "data = json.loads(re.search(r'<script id=\"toolkit-data\" type=\"application/json\">(.*?)</script>', html, re.S).group(1))",
+    "raw = base64.b64decode(data['assets']['zip'].split(',', 1)[1], validate=True)",
+    "fields = {f['id']: f['text'] for f in data['fields']}",
+    "assert hashlib.sha256(raw).hexdigest() == fields['zip-checksum']",
+    "with zipfile.ZipFile(io.BytesIO(raw)) as archive:",
+    " assert archive.testzip() is None",
+    " assert json.loads(archive.read('manifest.json')) == json.loads((root / 'manifest.json').read_text())",
+    " for name in archive.namelist(): assert archive.read(name) == (root / name).read_bytes(), name",
+    "assert fields['zip-path'] == 'dist/browser-preference-switcher-' + json.loads((root / 'manifest.json').read_text())['version'] + '.zip'"
+  ].join("\n");
+  const result = spawnSync("python3", ["-c", script, projectRoot], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+});
+
 let crcTable;
 function crc32(value) {
   if (!crcTable) {
