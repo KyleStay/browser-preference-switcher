@@ -1,6 +1,8 @@
 const site = document.querySelector("#site");
 const identity = document.querySelector("#identity");
 const reason = document.querySelector("#reason");
+const userAgentSection = document.querySelector("#user-agent-section");
+const userAgent = document.querySelector("#user-agent");
 const enabled = document.querySelector("#enabled");
 const platform = document.querySelector("#platform");
 const versionStatus = document.querySelector("#version-status");
@@ -8,8 +10,10 @@ const refresh = document.querySelector("#refresh");
 const message = document.querySelector("#message");
 const consentCard = document.querySelector("#consent-card");
 const consentHeading = document.querySelector("#consent-heading");
+const consentDisclosure = document.querySelector("#consent-disclosure");
 const consentButton = document.querySelector("#accept-consent");
 const consentMessage = document.querySelector("#consent-message");
+const retryState = document.querySelector("#retry-state");
 
 let currentTab;
 let currentState;
@@ -30,37 +34,44 @@ function setBusy(value) {
   platform.disabled = busy || !currentState;
   refresh.disabled = busy || !consentAccepted;
   consentButton.disabled = busy;
+  retryState.disabled = busy || retryState.hidden;
 }
 
 function showUnavailable() {
   site.textContent = "Unable to load this site";
   identity.textContent = "Unavailable";
   reason.textContent = "";
-  enabled.checked = false;
-  platform.value = "auto";
+  clearUserAgent();
+  retryState.hidden = !consentAccepted;
   versionStatus.textContent = "Version data unavailable";
 }
 
 function showConsent() {
   consentAction = "accept";
   consentCard.hidden = false;
+  retryState.hidden = true;
   consentHeading.textContent = "Before you continue";
+  consentDisclosure.hidden = false;
   consentButton.textContent = "Agree and enable";
   setConsentMessage("");
   site.textContent = "Consent required before reading the active tab";
   identity.textContent = "Consent required";
   reason.textContent = "Read the notice below to enable the extension.";
+  clearUserAgent();
   versionStatus.textContent = "Version data unavailable until enabled";
 }
 
 function showInitialLoadError(error) {
   consentAction = "retry";
   consentCard.hidden = false;
+  retryState.hidden = true;
   consentHeading.textContent = "Unable to load preferences";
+  consentDisclosure.hidden = true;
   consentButton.textContent = "Retry";
   site.textContent = "Unable to load preferences";
   identity.textContent = "Unavailable";
   reason.textContent = "Retry to check your local preferences before reading the active tab.";
+  clearUserAgent();
   versionStatus.textContent = "Version data unavailable";
   setConsentMessage(errorMessage(error), true);
 }
@@ -85,6 +96,46 @@ function setConsentMessage(text, isError = false) {
   consentMessage.classList.toggle("error", isError);
 }
 
+function focusFirstSetting() {
+  if (!enabled.disabled) enabled.focus();
+  else if (!platform.disabled) platform.focus();
+}
+
+function clearUserAgent() {
+  userAgent.textContent = "";
+  userAgentSection.hidden = true;
+}
+
+function renderUserAgent(value) {
+  const text = typeof value === "string" && value.trim()
+    ? value
+    : "No override; the browser’s native User-Agent header is used.";
+  userAgent.textContent = text;
+  userAgentSection.hidden = false;
+}
+
+function versionSourceLabel(key) {
+  const [source, os] = String(key).split(".");
+  const browser = ({ chrome: "Chrome", edge: "Edge", safari: "Safari" })[source] ?? source;
+  const platform = ({ mac: "macOS", windows: "Windows", linux: "Linux" })[os];
+  return platform ? `${browser} on ${platform}` : browser;
+}
+
+function renderVersionStatus(state) {
+  const checked = state.versionsCheckedAt
+    ? `Last check ${new Date(state.versionsCheckedAt).toLocaleString()}`
+    : "Version data not checked yet";
+  const errors = Object.entries(state.versionErrors ?? {});
+  if (!errors.length) {
+    versionStatus.textContent = state.versionsCheckedAt
+      ? `Versions checked ${new Date(state.versionsCheckedAt).toLocaleString()}`
+      : "Version data not checked yet; cached defaults in use";
+    return;
+  }
+  const details = errors.map(([source, error]) => `${versionSourceLabel(source)}: ${error}`).join("; ");
+  versionStatus.textContent = `${checked}; ${details}. Cached versions remain in use.`;
+}
+
 function canReloadTab(tab = currentTab) {
   return tab?.id != null && /^https:\/\//i.test(tab.url ?? "");
 }
@@ -104,9 +155,9 @@ function render(state) {
   platform.value = state.platformMode;
   identity.textContent = state.browser ? `${browserName(state.browser)} · ${state.platformLabel}` : "Native browser";
   reason.textContent = state.reason ?? "";
-  const date = state.versionsCheckedAt ? new Date(state.versionsCheckedAt).toLocaleString() : "not checked yet";
-  const errorCount = Object.keys(state.versionErrors ?? {}).length;
-  versionStatus.textContent = errorCount ? `Last check ${date} · ${errorCount} source issue(s)` : `Versions checked ${date}`;
+  renderUserAgent(state.userAgent);
+  retryState.hidden = true;
+  renderVersionStatus(state);
 }
 
 async function loadCurrentState() {
@@ -200,6 +251,7 @@ async function acceptPrivacyNotice() {
     acceptedByThisAttempt = true;
     hideConsent();
     if (!await load()) throw new Error("Could not load extension settings after enabling.");
+    setMessage("Automatic switching is enabled. Reload open matched pages to apply it.");
   } catch (error) {
     currentTab = undefined;
     currentState = undefined;
@@ -215,6 +267,7 @@ async function acceptPrivacyNotice() {
     }
   } finally {
     setBusy(false);
+    if (acceptedByThisAttempt && currentState) focusFirstSetting();
   }
 }
 
@@ -225,6 +278,21 @@ async function retryInitialLoad() {
   try {
     await startInitialLoad();
   } catch {}
+}
+
+async function retryCurrentState() {
+  if (busy || !consentAccepted) return;
+  setBusy(true);
+  setMessage("Loading settings…");
+  try {
+    await loadCurrentState();
+    setMessage("");
+  } catch (error) {
+    setMessage(errorMessage(error), true);
+  } finally {
+    setBusy(false);
+    if (currentState) focusFirstSetting();
+  }
 }
 
 async function save(patch) {
@@ -284,6 +352,7 @@ refresh.addEventListener("click", async () => {
 });
 
 consentButton.addEventListener("click", () => consentAction === "retry" ? retryInitialLoad() : acceptPrivacyNotice());
+retryState.addEventListener("click", retryCurrentState);
 
 setBusy(true);
 function startInitialLoad() {

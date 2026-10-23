@@ -1,10 +1,39 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const browserSmoke = require("./browser-smoke.cjs");
 
 const fixtureSource = fs.readFileSync(path.join(__dirname, "fixtures/vendor-fetch.js"), "utf8");
+
+test("browser profile ownership treats macOS /var and /private/var spellings as one profile", () => {
+  const requested = "/var/folders/ab/cd1234/T/bps-browser-smoke-profile";
+  const canonical = "/private/var/folders/ab/cd1234/T/bps-browser-smoke-profile";
+  const resource = {
+    profile_dir: canonical,
+    requested_profile_dir: requested,
+    profile_aliases: browserSmoke.profileAliases(requested, canonical)
+  };
+
+  assert.equal(browserSmoke.commandUsesProfile(`Chrome for Testing --user-data-dir=${requested}`, resource), true);
+  assert.equal(browserSmoke.commandUsesProfile(`Chrome for Testing --user-data-dir=${canonical}`, resource), true);
+  assert.equal(browserSmoke.commandUsesProfile(`Chrome for Testing --user-data-dir=${canonical}-sibling`, resource), false);
+  assert.equal(browserSmoke.commandUsesProfile("Chrome for Testing --user-data-dir=/private/var/folders/other", resource), false);
+});
+
+test("canonical profile helper resolves the real temporary directory", () => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bps-browser-harness-"));
+  try {
+    const profile = path.join(temporaryRoot, "profile");
+    fs.mkdirSync(profile);
+    assert.equal(browserSmoke.canonicalPathSync(profile), fs.realpathSync.native(profile));
+    assert(browserSmoke.profileAliases(profile).includes(browserSmoke.canonicalPathSync(profile)));
+  } finally {
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+});
 
 function fixture() {
   const storage = {};

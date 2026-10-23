@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Browser Preference Switcher",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "Change browser request headers on selected sites while keeping the real browser engine.",
   "homepage_url": "https://github.com/KyleStay/browser-preference-switcher",
   "icons": {

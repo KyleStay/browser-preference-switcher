@@ -231,3 +231,25 @@ test("rejects a resource symlink that escapes the project", t => {
   assert.match(result.stderr, /resolves outside the project/);
   assert.equal(fs.existsSync(fixture.archive), false);
 });
+
+test("rectangular screenshot validation accepts store dimensions and rejects corrupt or incomplete PNGs", t => {
+  const fixture = createFixture();
+  t.after(fixture.cleanup);
+  const screenshot = path.join(fixture.root, "screenshot-test-fixture.png");
+  const validation = [
+    "import importlib.util, sys",
+    "from pathlib import Path",
+    "spec = importlib.util.spec_from_file_location('packager', sys.argv[1])",
+    "module = importlib.util.module_from_spec(spec)",
+    "spec.loader.exec_module(module)",
+    "module._validate_png(Path(sys.argv[2]).read_bytes(), (1280, 800), 'test screenshot')"
+  ].join("\n");
+  const check = bytes => {
+    fs.writeFileSync(screenshot, bytes);
+    return spawnSync("python3", ["-c", validation, packageScript, screenshot], { encoding: "utf8" });
+  };
+  assert.equal(check(fakePng(1280, 800)).status, 0);
+  assert.notEqual(check(fakePng(1280, 1280)).status, 0);
+  assert.notEqual(check(fakePng(1280, 800, { corruptCrc: true })).status, 0);
+  assert.notEqual(check(fakePng(1280, 800).subarray(0, 33)).status, 0);
+});

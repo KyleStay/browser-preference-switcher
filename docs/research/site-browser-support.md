@@ -4,14 +4,14 @@ Research checked on September 25, 2026, against vendor support pages.
 
 ## Findings
 
-- **Apple iCloud.com:** Apple says iCloud.com works best in current Safari on recent Apple operating systems. It also documents support for recent Chrome, Firefox, Edge, and Opera on Windows. The user requests Safari identity across iCloud and Apple domains, with their reported OS left to the selected setting.
+- **Apple iCloud.com:** Apple says iCloud.com works best in current Safari on recent Apple operating systems. It also documents support for recent Chrome, Firefox, Edge, and Opera on Windows. The user requests Chrome identity across iCloud and Apple domains when the reported OS is Windows, and Safari otherwise. This October 14, 2026 update is an explicit preference; the existing vendor research below was checked on September 25.
 - **Google Account sign-in:** Google lists Chrome, Safari, Firefox, Opera, and Edge as supported browsers. The guidance does not identify Chrome as the only supported browser.
 - **Microsoft 365 for the web:** Microsoft's compatibility guidance varies by OS and lists several supported current browsers for desktop systems. The user requests Edge identity on Microsoft web properties, so this is recorded as a preference rather than an official browser requirement.
 - **Apple web-only iCloud access:** Apple's guidance also lists the latest Safari, Firefox, Chrome, Edge, and Opera as supported.
 
 ## Inference for the rule catalog
 
-Apple's `icloud.com` guidance says Safari works best on Apple platforms. The user requests Safari on `apple.com` and `icloud.com`; the `apple.com` rule includes Maps at `maps.apple.com`.
+Apple's `icloud.com` guidance says Safari works best on Apple platforms. The user requests Chrome on `apple.com` and `icloud.com` for Windows, and Safari otherwise; the `apple.com` rule includes Maps at `maps.apple.com`. The effective reported OS follows the device in automatic mode and the selected value in manual mode. This is a user preference, not a claim that Apple requires a particular browser.
 
 Google lists several supported browsers, so Chrome is not a requirement. The project applies Chrome to Google and YouTube domains because the user explicitly requested that preference.
 

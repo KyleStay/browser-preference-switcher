@@ -121,7 +121,8 @@ def _manifest_resources(manifest: dict):
     return references
 
 
-def _validate_png(data: bytes, expected_size: int, label: str) -> None:
+def _validate_png(data: bytes, expected_size: int | tuple[int, int], label: str) -> None:
+    expected_width, expected_height = (expected_size, expected_size) if isinstance(expected_size, int) else expected_size
     if not data.startswith(PNG_SIGNATURE):
         raise PackageError(f"{label} is not a PNG file")
 
@@ -158,9 +159,9 @@ def _validate_png(data: bytes, expected_size: int, label: str) -> None:
             width, height, bit_depth, color_type, compression, filter_method, interlace = struct.unpack(
                 ">IIBBBBB", chunk_data
             )
-            if width != expected_size or height != expected_size:
+            if width != expected_width or height != expected_height:
                 raise PackageError(
-                    f"{label} must be {expected_size}x{expected_size} (got {width}x{height})"
+                    f"{label} must be {expected_width}x{expected_height} (got {width}x{height})"
                 )
             allowed_depths = {
                 0: {1, 2, 4, 8, 16},

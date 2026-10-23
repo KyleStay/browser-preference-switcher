@@ -1,4 +1,6 @@
-# Chrome Web Store publishing notes — Browser Preference Switcher 0.1.1
+> Current 0.1.3 landing validation: source/package checks pass; live browser checks are UNRUN at the denied runner boundary. Earlier browser results below are historical evidence, not validation of this candidate.
+
+# Chrome Web Store publishing notes — Browser Preference Switcher 0.1.3
 
 This document prepares a public Chrome Web Store submission for the `KyleStay/browser-preference-switcher` repository. It does not upload a package, change a publisher account, submit an item for review, or publish anything. The release owner must recheck the live dashboard and current policies immediately before submission.
 
@@ -51,7 +53,7 @@ The privacy policy URL above, the Limited Use certification, and the fields desc
 
 ### Permission justifications
 
-The manifest is version 0.1.1 and currently requests these runtime permissions:
+The manifest is version 0.1.3 and currently requests these runtime permissions:
 
 | Manifest permission | Reviewer-facing justification |
 | --- | --- |
@@ -75,23 +77,23 @@ The extension deliberately does not request `debugger`, `tabs`, `webRequest`, `s
 
 Paste the following into the Chrome Web Store **Test instructions** field. No account credentials are needed for the public-page checks.
 
-> **Browser Preference Switcher 0.1.1 — reviewer steps**
+> **Browser Preference Switcher 0.1.3 — reviewer steps**
 >
 > 1. Install the submitted package in a Chromium browser and pin or open the extension action. The extension is intended for Brave and other Chromium browsers supporting Manifest V3.
 > 2. Start from a fresh install, or remove and reinstall the extension to clear its local storage. A legacy installation with no current consent version follows the same first-use path.
 > 3. Open the extension popup before accepting. Confirm that it shows the data-use notice, the **Agree and enable** action, and a permanent link to the public privacy policy. Before acceptance, the extension must not inspect the active-tab address or device operating system, activate identity-changing request rules, or make automatic or manual vendor-version requests. It may read local extension storage to determine whether consent is current.
-> 4. Click **Agree and enable** once. Confirm that consent version 1 is stored locally, the rules become active, and the initial release-source check begins. The popup should then show the current state and version status.
+> 4. Click **Agree and enable** once. Confirm that consent version 1 is stored locally, the rules become active, and the initial release-source check begins. The consent notice should disappear immediately; the popup should then show the current state, full User-Agent request header, and version status.
 > 5. Visit these HTTPS pages, reload once, and open the extension popup on each page:
 >    - `https://www.google.com/` — expected configured identity: Chrome.
 >    - `https://www.youtube.com/` — expected configured identity: Chrome.
 >    - `https://www.microsoft.com/` — expected configured identity: Microsoft Edge.
 >    - `https://www.office.com/` — expected configured identity: Microsoft Edge.
->    - `https://www.apple.com/` — expected configured identity: Safari.
->    - `https://www.icloud.com/` — expected configured identity: Safari. A signed-in iCloud session is optional and is not required for the rule check.
+>    - `https://www.apple.com/` — expected configured identity: Chrome when the reported OS is Windows, Safari otherwise.
+>    - `https://www.icloud.com/` — expected configured identity: Chrome when the reported OS is Windows, Safari otherwise. A signed-in iCloud session is optional and is not required for the rule check.
 >    - `https://example.com/` — expected configured identity: Native browser; no automatic rule matches.
-> 6. In the popup, confirm that the hostname, configured identity, matching-rule reason, and reported operating system are visible. The default `auto` setting reports the test device's actual OS.
+> 6. In the popup, confirm that the hostname, configured identity, full User-Agent request header, matching-rule reason, and reported operating system are visible. The default `auto` setting reports the test device's actual OS.
 > 7. Turn **Automatic switching** off. Reload a curated page and reopen the popup; it should report **Native browser**. Consent remains stored and version checks remain available. Turn switching on again and confirm the curated identity returns after reload.
-> 8. Change **Reported operating system** to macOS, Windows, or Linux. The selected value remains visible in the popup and the identity label updates after the page reload. Return to **Keep this device's OS (default)** when finished.
+> 8. Change **Reported operating system** to macOS, Windows, or Linux. The selected value remains visible in the popup and the identity label updates after the page reload. On an Apple or iCloud page, Windows must show Chrome and macOS or Linux must show Safari. Return to **Keep this device's OS (default)** when finished.
 > 9. Use **Refresh** beside the version status to request current stable release data. The popup reports source errors while retaining the last valid cached values if a source is unavailable. This manual refresh is available only after consent.
 > 10. To stop all extension handling, use the browser's **Disable** or **Remove** control. Uninstalling should remove the local consent, settings, cached versions, and errors.
 >
@@ -133,9 +135,9 @@ Do not treat these examples as a promise that a site will accept, expose, or con
 
 The release package is expected at:
 
-`dist/browser-preference-switcher-0.1.1.zip`
+`dist/browser-preference-switcher-0.1.3.zip`
 
-Run `npm run package` to build the archive with Python's standard library. The allowlist packages only the five runtime files and four PNG icons; tests, fixtures, local CI scripts, repository documentation, and listing artwork are excluded. The consent-gated version 0.1.1 package has been built and inspected, with the manifest at the ZIP root and no parent directory wrapper. Promotional images and screenshots are uploaded separately to the listing dashboard.
+Run `npm run package` to build the archive with Python's standard library. The allowlist packages only the five runtime files and four PNG icons; tests, fixtures, local CI scripts, repository documentation, and listing artwork are excluded. The consent-gated version 0.1.3 package has been built and inspected, with the manifest at the ZIP root and no parent directory wrapper. Promotional images and screenshots are uploaded separately to the listing dashboard.
 
 The GitHub repository has been made public. The Chrome Web Store package has not been uploaded or submitted; publisher-account state is untouched.
 
@@ -155,18 +157,28 @@ The release source, privacy policy, and listing preparation are published in the
 
 ### Runtime and account blockers
 
-- The supplied isolated Chrome runner is blocked in this environment before launch because localhost socket binding is denied. No real store screenshot can be generated here; do not invent one.
+- Isolated Chrome checks now pass. Real 1280×800 consent and accepted-state screenshots are captured, inspected, and included in the HTML guide and kit. The initial localhost restriction and macOS profile-path alias bug have been resolved for the local run.
 - Brave has not yet been exercised with the extension, and authenticated Google, Microsoft 365, and iCloud sessions still need manual compatibility checks. The local checks documented in `docs/review.md` are not a Brave or authenticated-site pass.
 - A Chrome Web Store publisher account with dashboard access, current developer contact details, and any account verification or payment step shown by Google is required for a real submission. The dashboard's publisher identity and any verified Official URL are account state and remain untouched.
-- Before submission, recheck that the current dashboard's privacy fields, privacy URL, listing copy, permissions, package contents, icon, and real screenshot all describe the same 0.1.1 behavior.
+- Before submission, recheck that the current dashboard's privacy fields, privacy URL, listing copy, permissions, package contents, icon, and real screenshot all describe the same 0.1.3 behavior.
 
 ### Consent-flow runtime verification
 
 - Verify the fresh-install and legacy-install notice, the permanent privacy-policy link, and the **Agree and enable** action in the real popup.
 - Verify that no active-tab address or device-OS inspection, identity-changing header activation, or automatic/manual vendor request occurs before consent, and that acceptance stores `privacyConsentVersion: 1` before enabling the initial rule and release check. Local consent/settings storage access may occur before acceptance.
 - Verify that turning automatic switching off retains consent and version checks, while browser-level Disable or Remove stops all handling and uninstall clears local storage.
-- These are implementation/runtime tests still pending in this environment. This is a test-status item; the consent behavior is the defined user-facing disclosure path.
+- Isolated Chrome verifies the first-use notice, actual visibility before/after acceptance, no pre-consent vendor requests or active rules, acceptance, and off/on switching. Browser-level removal/uninstall and authenticated Brave workflows remain manual checks.
 
 ## Submission boundary
 
 Preparation is complete when the text and assets are reviewable locally. The actual ZIP upload, dashboard data entry, publisher-account changes, review submission, and publication are separate external actions and are not authorized by this document.
+
+## Capture and embed real screenshots
+
+From a normal Terminal on this Mac, run:
+
+```sh
+npm run ci && npm run package && python3 scripts/package-publishing-kit.py
+```
+
+Full local CI captures the actual first-use notice and accepted-state popup in isolated Chrome for Testing at 1280 × 800. It uses local page and vendor-data fixtures, and cleans up its profiles and processes. The kit builder embeds those PNGs in the HTML guide and includes them in the downloadable kit. Open `dist/publishing-kit-0.1.3/index.html` and review the screenshot previews before uploading. It does not generate a substitute image when browser capture fails.

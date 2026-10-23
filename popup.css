@@ -4,21 +4,26 @@
 }
 
 body { margin: 0; min-width: 310px; }
+[hidden] { display: none !important; }
 main { padding: 16px; }
 h1 { margin: 0 0 2px; font-size: 16px; }
 .site { margin: 0 0 14px; overflow-wrap: anywhere; color: #697386; }
-.identity { display: grid; gap: 3px; padding: 12px; border: 1px solid #858b982e; border-radius: 9px; }
+.identity { display: grid; gap: 3px; min-width: 0; padding: 12px; border: 1px solid #858b982e; border-radius: 9px; }
 .consent-card { display: grid; gap: 8px; padding: 12px; border: 1px solid #858b9855; border-radius: 9px; }
 .consent-card h2 { margin: 0; font-size: 15px; }
 .consent-card p { margin: 0; }
 .eyebrow { color: #697386; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .identity strong { font-size: 15px; }
+.user-agent { min-width: 0; margin-top: 4px; }
+.user-agent code { display: block; max-width: 100%; margin-top: 2px; padding: 6px 8px; border-radius: 5px; background: #858b9814; color: inherit; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
+.state-retry { margin-top: 12px; }
 .muted { color: #697386; }
 .toggle-row, .field { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; }
 .field { align-items: flex-start; flex-direction: column; }
 select, button { font: inherit; }
 select { width: 100%; padding: 7px 8px; border: 1px solid #858b9855; border-radius: 6px; background: transparent; }
-.version-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 15px; }
+.version-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-top: 15px; }
+.version-row .muted { min-width: 0; overflow-wrap: anywhere; }
 button { padding: 6px 10px; border: 1px solid #858b9855; border-radius: 6px; background: transparent; cursor: pointer; }
 button:disabled { opacity: .55; cursor: wait; }
 .message { min-height: 1.2em; margin: 8px 0 0; }

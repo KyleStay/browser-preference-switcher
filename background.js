@@ -146,9 +146,21 @@ function hostMatches(host, domain) {
   return host === domain || host.endsWith(`.${domain}`);
 }
 
+function resolvedSiteRule(rule, os) {
+  if (os === "windows" && ["apple.com", "icloud.com"].includes(rule.domain)) {
+    return {
+      ...rule,
+      browser: "chrome",
+      reason: "User preference: report Chrome on Apple sites when using Windows."
+    };
+  }
+  return rule;
+}
+
 function profileFor(host, os, enabled) {
   if (!enabled || !OS_PROFILES[os]) return null;
-  return SITE_RULES.find(rule => (rule.platform === "any" || rule.platform === OS_PROFILES[os].label) && hostMatches(host, rule.domain)) ?? null;
+  const rule = SITE_RULES.find(candidate => (candidate.platform === "any" || candidate.platform === OS_PROFILES[os].label) && hostMatches(host, candidate.domain));
+  return rule ? resolvedSiteRule(rule, os) : null;
 }
 
 function browserVersion(versions, browser, os) {
@@ -230,7 +242,8 @@ async function applyHeaderRules() {
   const os = settings.consentAccepted ? await reportedOS(settings.platformMode) : null;
   const rules = [];
   if (settings.enabled && OS_PROFILES[os]) {
-    for (const site of SITE_RULES) {
+    for (const baseSite of SITE_RULES) {
+      const site = resolvedSiteRule(baseSite, os);
       if (site.platform === "any" || site.platform === OS_PROFILES[os].label) {
         const identity = makeIdentity(site.browser, settings.versions, os);
         rules.push(dynamicRule(rules.length + 1, site.domain, identity));
@@ -434,6 +447,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           platformLabel: "This device's OS",
           host: "",
           browser: null,
+          userAgent: null,
           reason: "Accept the privacy notice to enable automatic switching.",
           versions: settings.versions,
           versionsCheckedAt: settings.versionsCheckedAt,
@@ -448,12 +462,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       let protocol = "";
       try { const parsed = new URL(url); host = parsed.hostname; protocol = parsed.protocol; } catch {}
       const match = protocol === "https:" ? profileFor(host, os, settings.enabled) : null;
+      const identity = match ? makeIdentity(match.browser, settings.versions, os) : null;
       sendResponse({
         enabled: settings.enabled,
         platformMode: settings.platformMode,
         platformLabel: OS_PROFILES[os]?.label ?? "This device's OS",
         host,
         browser: match?.browser ?? null,
+        userAgent: identity?.userAgent ?? null,
         reason: !settings.enabled ? "Automatic switching is off; the native browser identity is used."
           : !OS_PROFILES[os] ? "This device's OS is unsupported; the native browser identity is used."
           : protocol !== "https:" ? "Automatic switching applies to HTTPS sites only."

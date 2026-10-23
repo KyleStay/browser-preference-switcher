@@ -14,6 +14,7 @@ const state = {
   platformLabel: "macOS",
   host: "google.com",
   browser: "chrome",
+  userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
   reason: "Test rule",
   versionsCheckedAt: 0
 };
@@ -22,17 +23,19 @@ const requestOf = (requests, type) => requests.find(request => request.type === 
 
 function setup({ tab = { id: 1, url: "https://google.com/" }, query, handler } = {}) {
   const elements = {};
-  for (const id of ["site", "identity", "reason", "enabled", "platform", "version-status", "refresh", "message", "consent-card", "consent-heading", "accept-consent", "consent-message"]) {
+  for (const id of ["site", "identity", "reason", "user-agent-section", "user-agent", "enabled", "platform", "version-status", "refresh", "message", "consent-card", "consent-heading", "consent-disclosure", "accept-consent", "consent-message", "retry-state"]) {
     const classes = new Set();
     elements[id] = {
       textContent: "",
       hidden: false,
       disabled: false,
+      focused: false,
       handlers: {},
       classList: {
         toggle(name, active) { active ? classes.add(name) : classes.delete(name); },
         contains(name) { return classes.has(name); }
       },
+      focus() { this.focused = true; },
       addEventListener(type, callback) { this.handlers[type] = callback; }
     };
   }
@@ -68,6 +71,9 @@ test("first use gates the popup without reading the active tab or refreshing ver
   assert.equal(requests.length, 1);
   assert.equal(requests[0].type, "get-popup-state");
   assert.equal(elements["consent-card"].hidden, false);
+  assert.equal(elements["consent-disclosure"].hidden, false);
+  assert.equal(elements["user-agent-section"].hidden, true);
+  assert.equal(elements["user-agent"].textContent, "");
   assert(!elements["accept-consent"].disabled);
   assert(elements.enabled.disabled && elements.platform.disabled && elements.refresh.disabled);
   await elements.refresh.handlers.click();
@@ -81,6 +87,8 @@ test("an old consent notice version requires the current notice", async () => {
   await tick();
   assert.equal(calls.tabs, 0);
   assert.equal(elements["consent-card"].hidden, false);
+  assert.equal(elements["consent-disclosure"].hidden, false);
+  assert.equal(elements["user-agent-section"].hidden, true);
   assert(!elements["accept-consent"].disabled);
 });
 
@@ -103,6 +111,10 @@ test("acceptance sends the notice version, then reads the active tab and enables
   assert.equal(acceptance.noticeVersion, 1);
   assert.equal(calls.tabs, 1);
   assert.equal(elements["consent-card"].hidden, true);
+  assert.equal(elements["user-agent-section"].hidden, false);
+  assert.equal(elements["user-agent"].textContent, state.userAgent);
+  assert.equal(elements.enabled.focused, true);
+  assert.match(elements.message.textContent, /enabled.*Reload open matched pages/);
   assert(!elements.enabled.disabled && !elements.platform.disabled && !elements.refresh.disabled);
 });
 
@@ -129,6 +141,8 @@ test("acceptance failure keeps the notice and button available for retry", async
   assert.equal(calls.tabs, 0);
   await elements["accept-consent"].handlers.click();
   assert.equal(elements["consent-card"].hidden, true);
+  assert.equal(elements["user-agent-section"].hidden, false);
+  assert.equal(elements["user-agent"].textContent, state.userAgent);
   assert.equal(calls.tabs, 1);
 });
 
@@ -137,12 +151,53 @@ test("returning users skip onboarding and load the active tab once", async () =>
   await tick();
   assert.equal(elements["consent-card"].hidden, true);
   assert.equal(calls.tabs, 1);
+  assert.equal(elements["user-agent"].textContent, state.userAgent);
+  assert.equal(elements["version-status"].textContent, "Version data not checked yet; cached defaults in use");
   assert(!elements.enabled.disabled && !elements.platform.disabled);
+});
+
+test("consented state without an override explains that the native header is used", async () => {
+  const { elements } = setup({
+    handler: request => request.type === "get-popup-state"
+      ? { ...state, browser: null, userAgent: null, reason: "No automatic rule matches this site; the native browser identity is used." }
+      : { ok: true }
+  });
+  await tick();
+  assert.equal(elements["user-agent-section"].hidden, false);
+  assert.equal(elements["user-agent"].textContent, "No override; the browser’s native User-Agent header is used.");
+  assert(!elements["user-agent"].textContent.includes("navigator.userAgent"));
 });
 
 test("consent disclosure keeps the required privacy policy link accessible", () => {
   assert.match(markup, /This extension reads the active tab’s address locally to show its site and configured request identity\. Addresses are not stored or sent to the developer\. Your settings stay on this device\. Release checks contact Google, Microsoft, and Apple; those servers receive normal connection details\. It changes request headers on selected HTTPS sites, not the browser engine or JavaScript identity\./);
   assert.match(markup, /href="https:\/\/github\.com\/KyleStay\/browser-preference-switcher\/blob\/main\/PRIVACY\.md" target="_blank" rel="noopener"/);
+  assert.match(markup, /id="user-agent-section" class="user-agent" aria-labelledby="user-agent-label" hidden/);
+  assert.match(markup, /id="user-agent-label" class="eyebrow">User-Agent request header<\/span>/);
+  assert.match(markup, /<code id="user-agent"><\/code>/);
+  assert.match(markup, /<p id="consent-disclosure">/);
+  assert.match(markup, /<button id="retry-state" class="state-retry" type="button" hidden>Retry loading settings<\/button>/);
+});
+
+test("version errors identify each source and promise the cached fallback", async () => {
+  const { elements } = setup({
+    handler: request => request.type === "get-popup-state"
+      ? {
+          ...state,
+          versionsCheckedAt: 1700000000000,
+          versionErrors: {
+            "chrome.mac": "timed out at the release endpoint",
+            "edge.windows": "offline",
+            safari: "No stable release found"
+          }
+        }
+      : { ok: true }
+  });
+  await tick();
+  assert.match(elements["version-status"].textContent, /Last check/);
+  assert.match(elements["version-status"].textContent, /Chrome on macOS: timed out at the release endpoint/);
+  assert.match(elements["version-status"].textContent, /Edge on Windows: offline/);
+  assert.match(elements["version-status"].textContent, /Safari: No stable release found/);
+  assert.match(elements["version-status"].textContent, /Cached versions remain in use/);
 });
 
 test("controls wait for the initial popup state", async () => {
@@ -297,6 +352,9 @@ test("initial global state failure offers a safe retry before reading tabs", asy
   assert.equal(elements["consent-heading"].textContent, "Unable to load preferences");
   assert.equal(elements["accept-consent"].textContent, "Retry");
   assert.equal(elements["consent-message"].textContent, "State unavailable");
+  assert.equal(elements["consent-disclosure"].hidden, true);
+  assert.equal(elements["retry-state"].hidden, true);
+  assert.equal(elements["user-agent-section"].hidden, true);
   assert(elements.enabled.disabled && elements.platform.disabled && elements.refresh.disabled);
   await elements["accept-consent"].handlers.click();
   assert.equal(calls.tabs, 1);
@@ -323,10 +381,41 @@ test("accepted consent stays acknowledged when the first active-tab load fails",
   assert.equal(calls.tabs, 1);
   assert.equal(elements["consent-card"].hidden, true);
   assert.equal(elements.identity.textContent, "Unavailable");
+  assert.equal(elements["user-agent-section"].hidden, true);
+  assert.equal(elements["user-agent"].textContent, "");
+  assert.equal(elements["retry-state"].hidden, false);
+  assert(!elements["retry-state"].disabled);
   assert.equal(elements.message.textContent, "Tab state unavailable");
   assert(elements.message.classList.contains("error"));
   assert(elements.enabled.disabled && elements.platform.disabled);
   assert(!elements.refresh.disabled);
+});
+
+test("accepted state failures preserve confirmed settings and recover through the dedicated retry", async () => {
+  let stateCalls = 0;
+  const { context, elements } = setup({
+    handler: request => {
+      if (request.type !== "get-popup-state") return { ok: true, reloaded: false, errors: {} };
+      stateCalls += 1;
+      if (stateCalls === 3) return { error: "Settings connection closed" };
+      return { ...state };
+    }
+  });
+  await tick();
+  assert.equal(elements.enabled.checked, true);
+  assert.equal(elements.platform.value, "auto");
+  await assert.rejects(context.load(), /Settings connection closed/);
+  assert.equal(elements.identity.textContent, "Unavailable");
+  assert.equal(elements.enabled.checked, true);
+  assert.equal(elements.platform.value, "auto");
+  assert(elements.enabled.disabled && elements.platform.disabled);
+  assert.equal(elements["retry-state"].hidden, false);
+  await elements["retry-state"].handlers.click();
+  assert.equal(elements.enabled.focused, true);
+  assert.equal(elements["retry-state"].hidden, true);
+  assert(!elements.enabled.disabled && !elements.platform.disabled);
+  assert.equal(elements.enabled.checked, true);
+  assert.equal(elements.platform.value, "auto");
 });
 
 test("a successful refresh disables stale controls when the follow-up state request fails", async () => {
@@ -341,6 +430,7 @@ test("a successful refresh disables stale controls when the follow-up state requ
   assert.match(elements.message.textContent, /Browser versions updated\. Could not update the popup: State connection closed/);
   assert(elements.enabled.disabled && elements.platform.disabled);
   assert.equal(elements.identity.textContent, "Unavailable");
+  assert.equal(elements["user-agent-section"].hidden, true);
   assert(!elements.refresh.disabled);
 });
 
@@ -372,6 +462,7 @@ test("a save transport failure invalidates the state before allowing recovery", 
   assert.equal(elements.message.textContent, "Connection closed while saving");
   assert(elements.enabled.disabled && elements.platform.disabled);
   assert.equal(elements.identity.textContent, "Unavailable");
+  assert.equal(elements["user-agent-section"].hidden, true);
   assert(!elements.refresh.disabled);
 });
 
@@ -386,6 +477,7 @@ test("an empty save response invalidates state because the outcome is unknown", 
   assert.equal(elements.message.textContent, "Could not save the setting.");
   assert(elements.enabled.disabled && elements.platform.disabled);
   assert.equal(elements.identity.textContent, "Unavailable");
+  assert.equal(elements["user-agent-section"].hidden, true);
   assert(!elements.refresh.disabled);
 });
 
@@ -403,6 +495,7 @@ test("a successful save disables stale controls when the follow-up popup state r
   assert.match(elements.message.textContent, /Saved.*Could not update the popup: State connection closed/);
   assert(elements.enabled.disabled && elements.platform.disabled);
   assert.equal(elements.identity.textContent, "Unavailable");
+  assert.equal(elements["user-agent-section"].hidden, true);
   assert(!elements.refresh.disabled);
 });
 
