@@ -21,6 +21,37 @@ const archiveNames = [
   "icons/icon-128.png"
 ];
 
+test("committed publishing guide embeds the current validated upload archive", () => {
+  const script = [
+    "import base64, hashlib, io, json, re, sys, zipfile",
+    "from pathlib import Path",
+    "root = Path(sys.argv[1])",
+    "html = (root / 'docs/publish-toolkit.html').read_text()",
+    "data = json.loads(re.search(r'<script id=\"toolkit-data\" type=\"application/json\">(.*?)</script>', html, re.S).group(1))",
+    "raw = base64.b64decode(data['assets']['zip'].split(',', 1)[1], validate=True)",
+    "fields = {f['id']: f['text'] for f in data['fields']}",
+    "assert hashlib.sha256(raw).hexdigest() == fields['zip-checksum']",
+    "with zipfile.ZipFile(io.BytesIO(raw)) as archive:",
+    " assert archive.testzip() is None",
+    " assert json.loads(archive.read('manifest.json')) == json.loads((root / 'manifest.json').read_text())",
+    " for name in archive.namelist(): assert archive.read(name) == (root / name).read_bytes(), name",
+    "assert fields['zip-path'] == 'dist/browser-preference-switcher-' + json.loads((root / 'manifest.json').read_text())['version'] + '.zip'",
+    "import importlib.util",
+    "spec = importlib.util.spec_from_file_location('kit', root / 'scripts/package-publishing-kit.py')",
+    "module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)",
+    "for folder in [root / 'release', root.parent / 'external-output']:",
+    " archive_path = folder / 'browser-preference-switcher-0.1.3.zip'",
+    " refreshed = module._refresh_toolkit_html(html, json.loads(json.dumps(data)), root=root, version='0.1.3', archive_path=archive_path, archive_data=raw, digest=hashlib.sha256(raw).hexdigest(), icon_data=b'icon', screenshots=[])",
+    " refreshed_data = json.loads(re.search(r'<script id=\"toolkit-data\" type=\"application/json\">(.*?)</script>', refreshed, re.S).group(1))",
+    " refreshed_fields = {f['id']: f['text'] for f in refreshed_data['fields']}",
+    " assert (root / refreshed_fields['zip-path']).resolve() == archive_path.resolve()",
+    " assert refreshed_fields['verify-command'].endswith(' && open dist/publishing-kit-0.1.3/index.html')",
+    " assert 'npm run ci && npm run package && python3 scripts/package-publishing-kit.py' in refreshed_fields['verify-command']"
+  ].join("\n");
+  const result = spawnSync("python3", ["-c", script, projectRoot], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+});
+
 let crcTable;
 function crc32(value) {
   if (!crcTable) {
@@ -230,4 +261,26 @@ test("rejects a resource symlink that escapes the project", t => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /resolves outside the project/);
   assert.equal(fs.existsSync(fixture.archive), false);
+});
+
+test("rectangular screenshot validation accepts store dimensions and rejects corrupt or incomplete PNGs", t => {
+  const fixture = createFixture();
+  t.after(fixture.cleanup);
+  const screenshot = path.join(fixture.root, "screenshot-test-fixture.png");
+  const validation = [
+    "import importlib.util, sys",
+    "from pathlib import Path",
+    "spec = importlib.util.spec_from_file_location('packager', sys.argv[1])",
+    "module = importlib.util.module_from_spec(spec)",
+    "spec.loader.exec_module(module)",
+    "module._validate_png(Path(sys.argv[2]).read_bytes(), (1280, 800), 'test screenshot')"
+  ].join("\n");
+  const check = bytes => {
+    fs.writeFileSync(screenshot, bytes);
+    return spawnSync("python3", ["-c", validation, packageScript, screenshot], { encoding: "utf8" });
+  };
+  assert.equal(check(fakePng(1280, 800)).status, 0);
+  assert.notEqual(check(fakePng(1280, 1280)).status, 0);
+  assert.notEqual(check(fakePng(1280, 800, { corruptCrc: true })).status, 0);
+  assert.notEqual(check(fakePng(1280, 800).subarray(0, 33)).status, 0);
 });

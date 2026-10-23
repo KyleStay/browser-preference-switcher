@@ -2,6 +2,7 @@
 // Requires Chrome for Testing, Playwright, and the isolated extension test runner.
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
@@ -9,7 +10,7 @@ const { execFile, execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const runner = process.env.BPS_CHROME_RUNNER || path.join(os.homedir(), '.codex/skills/chrome-extension-test-runner/scripts/launch_test_chrome.py');
 const playwrightPath = process.env.BPS_PLAYWRIGHT_MODULE || path.join(os.homedir(), '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
-const { chromium } = require(playwrightPath);
+let chromium;
 const resources = [];
 const vendorUrls = [
   'https://developer.apple.com/tutorials/data/documentation/safari-release-notes.json',
@@ -24,6 +25,11 @@ let serverListening = false;
 let tempRoot;
 let cleaning;
 let interrupted = false;
+
+function chromiumDriver() {
+  if (!chromium) chromium = require(playwrightPath).chromium;
+  return chromium;
+}
 
 function delay(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -58,11 +64,32 @@ function sameProcessIdentity(expected, current) {
   return expected?.started === current.started && expected?.command === current.command;
 }
 
+function canonicalPathSync(candidate) {
+  return fsSync.realpathSync.native(path.resolve(candidate));
+}
+
+function profileAliases(...candidates) {
+  const aliases = new Set();
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string' || !candidate) continue;
+    const resolved = path.resolve(candidate);
+    aliases.add(resolved);
+    try { aliases.add(canonicalPathSync(resolved)); } catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
+  }
+  return [...aliases];
+}
+
+function commandUsesProfile(command, resource) {
+  const aliases = resource.profile_aliases ?? profileAliases(resource.profile_dir, resource.requested_profile_dir);
+  const argumentsInCommand = command.split(/\s+/);
+  return aliases.some(alias => argumentsInCommand.includes(`--user-data-dir=${alias}`));
+}
+
 function inventory(resource) {
   const all = processes();
   // A unique profile marker identifies only this run, even if runner launch fails.
-  const profileMarker = `--user-data-dir=${resource.profile_dir}`;
-  const roots = all.filter(p => p.command.includes(profileMarker) && p.command.includes('Google Chrome for Testing'));
+  // macOS may render the same temporary path as /var or /private/var.
+  const roots = all.filter(p => commandUsesProfile(p.command, resource) && p.command.includes('Google Chrome for Testing'));
   const owned = new Set();
   for (const p of roots) {
     const known = resource.processes.get(p.pid);
@@ -150,15 +177,21 @@ async function cleanup() {
   return cleaning;
 }
 
-for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
+if (require.main === module) for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
   interrupted = true;
   cleanup().then(() => process.exit(130), error => { console.error(error); process.exit(1); });
 });
 
 async function launch(extension, url, label) {
   if (interrupted) throw new Error('Browser test interrupted');
-  const profileDir = await fs.mkdtemp(path.join(tempRoot, `${label}-profile-`));
-  const resource = { profile_dir: profileDir, processes: new Map() };
+  const requestedProfileDir = await fs.mkdtemp(path.join(tempRoot, `${label}-profile-`));
+  const profileDir = await fs.realpath(requestedProfileDir);
+  const resource = {
+    profile_dir: profileDir,
+    requested_profile_dir: requestedProfileDir,
+    profile_aliases: profileAliases(requestedProfileDir, profileDir),
+    processes: new Map()
+  };
   resources.push(resource);
   const started = startRunner([runner, '--extension', extension, '--url', url, '--profile', profileDir]);
   resource.runnerProcess = started.child;
@@ -185,14 +218,15 @@ async function launch(extension, url, label) {
     throw new Error(`${label}: Chrome runner failed${details ? `\n${details}` : ''}`, { cause: error });
   }
   resource.launchResult = result;
-  assert.equal(path.resolve(result.profile_dir ?? ''), path.resolve(profileDir), `${label}: runner changed the owned profile path`);
+  assert.equal(typeof result.profile_dir, 'string', `${label}: runner did not report its profile path`);
+  assert.equal(await fs.realpath(result.profile_dir), profileDir, `${label}: runner changed the owned profile path`);
   for (const [key, value] of Object.entries(result)) if (key !== 'profile_dir') resource[key] = value;
   assert(Number.isInteger(resource.pid), `${label}: runner did not report Chrome's pid`);
   if (interrupted) throw new Error('Browser test interrupted');
   assert.equal(resource.debugger_ready, true);
   assert.equal(resource.extension_loaded, true);
   assert(inventory(resource).some(process => process.pid === resource.pid), `${label}: runner-reported Chrome pid is not in the owned process tree`);
-  resource.browser = await chromium.connectOverCDP(`http://127.0.0.1:${resource.debug_port}`);
+  resource.browser = await chromiumDriver().connectOverCDP(`http://127.0.0.1:${resource.debug_port}`);
   resource.context = resource.browser.contexts()[0];
   resource.unexpectedPageRequests = [];
   await resource.context.route('**/*', route => {
@@ -280,6 +314,7 @@ async function waitForConsentRefresh(resource) {
 
 async function assertConsentNotice(resource, popup) {
   await popup.waitForFunction(() => document.querySelector('#consent-card')?.hidden === false);
+  assert.equal(await popup.locator('#consent-card').isVisible(), true, 'First-use consent card must be visible');
   assert.equal(await popup.locator('#accept-consent').textContent(), 'Agree and enable');
   assert.equal(await popup.locator('#accept-consent').isEnabled(), true);
   const before = await popup.evaluate(() => new Promise(resolve => chrome.runtime.sendMessage({ type: 'get-popup-state', url: 'https://www.google.com/' }, resolve)));
@@ -291,6 +326,8 @@ async function assertConsentNotice(resource, popup) {
   assert.deepEqual((await storedVendorState(resource)).requests, []);
   await popup.locator('#accept-consent').click();
   await popup.waitForFunction(() => document.querySelector('#consent-card')?.hidden === true);
+  assert.equal(await popup.locator('#consent-card').isVisible(), false, 'Accepted consent card must be hidden');
+  await popup.waitForFunction(() => !document.querySelector('#enabled').disabled && document.activeElement?.id === 'enabled');
   await waitForConsentRefresh(resource);
 }
 
@@ -338,6 +375,8 @@ async function manifestParityChecks(url) {
   popup.on('pageerror', error => pageErrors.push(error.message));
   await popup.goto(`chrome-extension://${resource.extension_id}/popup.html`);
   await popup.waitForFunction(() => document.querySelector('#consent-card')?.hidden === false);
+  assert.equal(await popup.locator('#consent-card').isVisible(), true, 'Consent screenshot must show the first-use notice');
+  assert.equal(await popup.locator('#user-agent-section').isVisible(), false, 'No configured header is shown before consent');
   assert.equal(await popup.locator('#accept-consent').textContent(), 'Agree and enable');
   await fs.mkdir(path.join(root, 'store/screenshots'), { recursive: true });
   await popup.screenshot({ path: path.join(root, 'store/screenshots/consent-1280x800.png') });
@@ -373,8 +412,16 @@ async function manifestParityChecks(url) {
     await load();
   });
   await assert.equal(await popup.locator('#site').textContent(), 'www.google.com');
+  assert.equal(await popup.locator('#consent-card').isVisible(), false, 'Accepted screenshot must hide the consent notice');
   await assert.equal(await popup.locator('#platform').inputValue(), 'auto');
   await assert.equal(await popup.locator('#identity').textContent(), 'Chrome · macOS');
+  const googleRule = (await rules(resource)).find(rule => rule.condition.requestDomains[0] === 'google.com');
+  const configuredUA = googleRule.action.requestHeaders.find(header => header.header === 'user-agent').value;
+  assert.equal(await popup.locator('#user-agent').textContent(), configuredUA);
+  assert.equal(await popup.locator('#user-agent-section').isVisible(), true);
+  await popup.setViewportSize({ width: 310, height: 600 });
+  assert.equal(await popup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Long User-Agent must wrap without horizontal overflow');
+  await popup.setViewportSize({ width: 1280, height: 800 });
   await popup.waitForFunction(() => !document.querySelector('#refresh').disabled);
   await popup.screenshot({ path: path.join(root, 'store/screenshots/accepted-1280x800.png') });
   await popup.locator('#refresh').click();
@@ -405,16 +452,61 @@ async function manifestParityChecks(url) {
   await popup.locator('#platform').selectOption('windows');
   await popup.waitForFunction(() => !document.querySelector('#platform').disabled && document.querySelector('#message').textContent.startsWith('Saved.'));
   assert.equal(await popup.locator('#identity').textContent(), 'Chrome · Windows');
+  const windowsGoogleRule = (await rules(resource)).find(rule => rule.condition.requestDomains[0] === 'google.com');
+  assert.equal(await popup.locator('#user-agent').textContent(), windowsGoogleRule.action.requestHeaders.find(header => header.header === 'user-agent').value);
+  assert.match(await popup.locator('#user-agent').textContent(), /Windows NT/);
   assert((await rules(resource)).every(rule => rule.action.requestHeaders[0].value.includes('Windows NT')));
+  const windowsAppleRules = (await rules(resource)).filter(rule => ['apple.com', 'icloud.com'].includes(rule.condition.requestDomains[0]));
+  assert.equal(windowsAppleRules.length, 2);
+  for (const rule of windowsAppleRules) {
+    const headers = rule.action.requestHeaders;
+    assert.match(headers.find(header => header.header === 'user-agent').value, /Windows NT.*Chrome\//);
+    assert(headers.find(header => header.header === 'sec-ch-ua').value.includes('Google Chrome'));
+    assert.equal(headers.find(header => header.header === 'sec-ch-ua-platform').value, '"Windows"');
+  }
+  const windowsAppleState = await popup.evaluate(async () => Promise.all(
+    ['https://www.apple.com/', 'https://maps.apple.com/', 'https://www.icloud.com/'].map(url =>
+      new Promise(resolve => chrome.runtime.sendMessage({ type: 'get-popup-state', url }, resolve)))
+  ));
+  assert(windowsAppleState.every(item => item.browser === 'chrome' && item.platformLabel === 'Windows' && /Windows NT.*Chrome\//.test(item.userAgent)));
   assert.match(await popup.locator('#message').textContent(), /Reloading/);
+  await popup.evaluate(async () => {
+    const original = chrome.runtime.sendMessage;
+    chrome.runtime.sendMessage = async () => { throw new Error('Owned popup recovery fixture'); };
+    try { await load(); } catch {} finally { chrome.runtime.sendMessage = original; }
+  });
+  assert.equal(await popup.locator('#retry-state').isVisible(), true);
+  assert.equal(await popup.locator('#consent-card').isVisible(), false, 'A settings error must not repeat the consent ask');
+  assert.equal(await popup.locator('#enabled').isChecked(), true, 'A read failure must preserve the last confirmed toggle');
+  assert.equal(await popup.locator('#platform').inputValue(), 'windows');
+  assert.equal(await popup.locator('#platform').isEnabled(), false);
+  assert.equal(await popup.locator('#user-agent-section').isVisible(), false, 'An unavailable state must not show a stale header');
+  await popup.locator('#retry-state').click();
+  await popup.waitForFunction(() => document.querySelector('#retry-state').hidden && !document.querySelector('#enabled').disabled);
+  assert.equal(await popup.locator('#platform').inputValue(), 'windows');
+  assert.match(await popup.locator('#user-agent').textContent(), /Windows NT/);
+  assert.equal(await popup.evaluate(() => document.activeElement.id), 'enabled');
+  await evaluateWorker(resource, () => chrome.storage.local.set({ versionErrors: { 'chrome.windows': 'Offline release fixture' } }));
+  await popup.evaluate(() => load());
+  assert.match(await popup.locator('#version-status').textContent(), /Chrome on Windows: Offline release fixture.*Cached versions remain in use/);
+  await popup.setViewportSize({ width: 310, height: 600 });
+  assert.equal(await popup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await popup.setViewportSize({ width: 1280, height: 800 });
+  await evaluateWorker(resource, () => chrome.storage.local.set({ versionErrors: {} }));
+  await popup.evaluate(() => load());
   await popup.locator('#enabled').uncheck();
   await popup.waitForFunction(() => !document.querySelector('#enabled').disabled && document.querySelector('#identity').textContent === 'Native browser');
   assert.equal((await rules(resource)).length, 0);
+  assert(!((await popup.locator('#user-agent').textContent()).includes('Mozilla/5.0')), 'Turning switching off must clear the configured User-Agent');
   await popup.locator('#enabled').check();
   await popup.waitForFunction(() => !document.querySelector('#enabled').disabled && document.querySelector('#identity').textContent === 'Chrome · Windows');
   assert.equal((await rules(resource)).length, 20);
   await popup.locator('#platform').selectOption('auto');
   await popup.waitForFunction(() => !document.querySelector('#platform').disabled && document.querySelector('#identity').textContent === 'Chrome · macOS');
+  const restoredAppleRules = (await rules(resource)).filter(rule => ['apple.com', 'icloud.com'].includes(rule.condition.requestDomains[0]));
+  assert.equal(restoredAppleRules.length, 2);
+  assert(restoredAppleRules.every(rule => rule.action.requestHeaders.some(header =>
+    header.header === 'user-agent' && /Version\/.* Safari\//.test(header.value))));
   assert.deepEqual(pageErrors, []);
   assert.deepEqual(resource.unexpectedPageRequests, []);
   console.log('Manifest parity checks passed: HTTPS/domain scope, macOS default, popup OS/toggle/reload behavior, local vendor parser refresh with 0 source errors. Only the temporary worker fetch transport is stubbed.');
@@ -459,10 +551,10 @@ async function fixtureHeaders(url) {
   await closeRun(resource);
 }
 
-(async () => {
+async function runBrowserSmoke() {
   let failure;
   try {
-    tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'bps-browser-smoke-'));
+    tempRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'bps-browser-smoke-')));
     server = http.createServer((request, response) => {
       response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'accept-ch': 'Sec-CH-UA-Full-Version-List, Sec-CH-UA-Arch, Sec-CH-UA-Bitness, Sec-CH-UA-Platform-Version, Sec-CH-UA-Model, Sec-CH-UA-WoW64, Sec-CH-UA-Form-Factors' });
       response.end(JSON.stringify(request.headers));
@@ -484,10 +576,15 @@ async function fixtureHeaders(url) {
     failure = failure ? new AggregateError([failure, error], 'Browser test and cleanup failed') : error;
   }
   if (failure) throw failure;
-})().catch(error => {
+}
+
+function reportBrowserSmokeFailure(error) {
   const source = error.cause ?? error;
   if ((['EPERM', 'EACCES'].includes(source.code) && source.syscall === 'listen') || /PermissionError: \[Errno (1|13)\] Operation not permitted/.test(source.stderr ?? '')) {
     console.error('Local browser CI could not bind its localhost fixture or Chrome debugging port. Run `npm run ci` from your local terminal where localhost sockets are allowed. No Chrome profile permission or sandbox escalation is requested.');
   } else console.error(error);
-  process.exitCode = 1;
-});
+}
+
+if (require.main === module) runBrowserSmoke().catch(error => { reportBrowserSmokeFailure(error); process.exitCode = 1; });
+
+module.exports = { canonicalPathSync, profileAliases, commandUsesProfile };

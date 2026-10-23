@@ -105,6 +105,119 @@ test("curated rules match exact hosts and subdomains, without matching suffix sp
   assert.equal(h.run("profileFor('apple.com', 'windows', false)"), null);
 });
 
+test("Apple and iCloud sites resolve to Chrome on Windows and Safari on other supported OSes", () => {
+  const h = harness();
+  const appleHosts = [
+    "apple.com", "www.apple.com", "maps.apple.com", "city.maps.apple.com",
+    "icloud.com", "www.icloud.com", "photos.icloud.com"
+  ];
+  for (const host of appleHosts) {
+    assert.equal(h.run(`profileFor(${JSON.stringify(host)}, 'windows', true)?.browser`), "chrome", host);
+    assert.match(h.run(`profileFor(${JSON.stringify(host)}, 'windows', true)?.reason`), /Chrome.*Windows/);
+    for (const os of ["mac", "linux"]) {
+      assert.equal(h.run(`profileFor(${JSON.stringify(host)}, '${os}', true)?.browser`), "safari", `${host} on ${os}`);
+    }
+  }
+  for (const host of ["evilapple.com", "apple.com.evil.example", "evilicloud.com", "icloud.com.evil.example"]) {
+    assert.equal(h.run(`profileFor(${JSON.stringify(host)}, 'windows', true)`), null, host);
+  }
+});
+
+test("Windows Apple rules use the Windows Chrome UA and compatible client hints", async () => {
+  const h = harness({ os: "win" });
+  for (const url of ["https://apple.com/", "https://maps.apple.com/", "https://www.icloud.com/"]) {
+    const state = await h.message({ type: "get-popup-state", url });
+    assert.equal(state.browser, "chrome", url);
+    assert.equal(state.platformLabel, "Windows", url);
+    assert.match(state.reason, /Chrome.*Windows/, url);
+    assert.match(state.userAgent, /Windows NT 10\.0; Win64; x64\).*Chrome\/140\.0\.0\.0/, url);
+  }
+
+  await h.run("rebuildHeaderRules()");
+  for (const domain of ["apple.com", "icloud.com"]) {
+    const rule = h.rules().find(candidate => candidate.condition.requestDomains.includes(domain));
+    assert.ok(rule, `missing DNR rule for ${domain}`);
+    const headers = new Map(rule.action.requestHeaders.map(item => [item.header, item]));
+    assert.match(headers.get("user-agent").value, /Windows NT 10\.0; Win64; x64\).*Chrome\/140\.0\.0\.0/);
+    assert.equal(headers.get("sec-ch-ua").value, '"Google Chrome";v="140", "Chromium";v="140", "Not_A Brand";v="99"');
+    assert.equal(headers.get("sec-ch-ua-platform").value, '"Windows"');
+    assert.equal(headers.get("sec-ch-ua-mobile").value, "?0");
+  }
+  assert.equal(h.rules().length, h.run("SITE_RULES.length"), "each curated domain has one rule");
+});
+
+test("Apple mapping follows explicit OS overrides while auto mode follows the actual OS", async () => {
+  const autoWindows = harness({ os: "win" });
+  const autoWindowsState = await autoWindows.message({ type: "get-popup-state", url: "https://apple.com/" });
+  assert.equal(autoWindowsState.browser, "chrome");
+  assert.equal(autoWindowsState.platformLabel, "Windows");
+
+  const forcedMac = harness({ os: "win", saved: settings({ platformMode: "mac" }) });
+  const forcedMacState = await forcedMac.message({ type: "get-popup-state", url: "https://apple.com/" });
+  assert.equal(forcedMacState.browser, "safari");
+  assert.equal(forcedMacState.platformLabel, "macOS");
+
+  const forcedWindows = harness({ os: "mac", saved: settings({ platformMode: "windows" }) });
+  const forcedWindowsState = await forcedWindows.message({ type: "get-popup-state", url: "https://icloud.com/" });
+  assert.equal(forcedWindowsState.browser, "chrome");
+  assert.equal(forcedWindowsState.platformLabel, "Windows");
+
+  const forcedLinux = harness({ os: "mac", saved: settings({ platformMode: "linux" }) });
+  const forcedLinuxState = await forcedLinux.message({ type: "get-popup-state", url: "https://maps.apple.com/" });
+  assert.equal(forcedLinuxState.browser, "safari");
+  assert.equal(forcedLinuxState.platformLabel, "Linux");
+});
+
+test("popup exposes the exact User-Agent installed in each matching DNR rule", async () => {
+  for (const [hostOS, expectedAppleBrowser] of [["mac", "safari"], ["win", "chrome"], ["linux", "safari"]]) {
+    const h = harness({ os: hostOS });
+    await h.run("rebuildHeaderRules()");
+    for (const domain of h.run("SITE_RULES.map(site => site.domain)")) {
+      const state = await h.message({ type: "get-popup-state", url: `https://${domain}/` });
+      const rule = h.rules().find(candidate => candidate.condition.requestDomains.includes(domain));
+      const userAgentHeader = rule?.action.requestHeaders.find(header => header.header === "user-agent");
+      assert.ok(userAgentHeader, `${hostOS}: missing User-Agent rule for ${domain}`);
+      assert.equal(state.userAgent, userAgentHeader.value, `${hostOS}: popup User-Agent differs for ${domain}`);
+      assert.equal(state.browser, domain === "apple.com" || domain === "icloud.com" ? expectedAppleBrowser
+        : domain === "google.com" || domain === "youtube.com" || domain === "youtu.be" ? "chrome" : "edge", `${hostOS}: browser profile for ${domain}`);
+    }
+  }
+});
+
+test("popup User-Agent follows cached browser versions after a release refresh", async () => {
+  const h = harness({ os: "mac" });
+  await h.run("rebuildHeaderRules()");
+  const before = await h.message({ type: "get-popup-state", url: "https://google.com/" });
+  assert.equal(before.userAgent, h.rules().find(rule => rule.condition.requestDomains.includes("google.com"))?.action.requestHeaders
+    .find(header => header.header === "user-agent")?.value);
+
+  await h.run("refreshVersions()");
+  const after = await h.message({ type: "get-popup-state", url: "https://google.com/" });
+  const refreshedHeader = h.rules().find(rule => rule.condition.requestDomains.includes("google.com"))?.action.requestHeaders
+    .find(header => header.header === "user-agent")?.value;
+  assert.equal(after.userAgent, refreshedHeader);
+  assert.notEqual(after.userAgent, before.userAgent);
+  assert.match(after.userAgent, /Chrome\/141\.0\.0\.0/);
+});
+
+test("Windows Apple mapping stays inactive without consent or when switching is disabled", async () => {
+  const unconsented = harness({ os: "win", saved: {} });
+  await unconsented.run("rebuildHeaderRules()");
+  assert.deepEqual(unconsented.rules(), []);
+  const unconsentedState = await unconsented.message({ type: "get-popup-state", url: "https://apple.com/" });
+  assert.equal(unconsentedState.browser, null);
+  assert.equal(unconsentedState.userAgent, null);
+  assert.equal(unconsentedState.consentAccepted, false);
+
+  const disabled = harness({ os: "win", saved: settings({ enabled: false }) });
+  await disabled.run("rebuildHeaderRules()");
+  assert.deepEqual(disabled.rules(), []);
+  const disabledState = await disabled.message({ type: "get-popup-state", url: "https://icloud.com/" });
+  assert.equal(disabledState.browser, null);
+  assert.equal(disabledState.userAgent, null);
+  assert.match(disabledState.reason, /disabled|turned off|switching is off/i);
+});
+
 test("manifest grants every curated HTTPS domain and subdomain, plus vendor source origins, without debugger access", () => {
   const h = harness();
   // Chrome match patterns treat *.example.com as both the root and its subdomains.
@@ -462,9 +575,11 @@ test("popup reports switching only for HTTPS URLs and explains disabled switchin
   const h = harness();
   const secure = await h.message({ type: "get-popup-state", url: "https://mail.google.com/inbox" });
   assert.equal(secure.browser, "chrome");
+  assert.match(secure.userAgent, /Chrome\/140\.0\.0\.0/);
   for (const url of ["http://google.com", "ftp://google.com", "chrome://extensions", "https://example.org", "invalid"]) {
     const state = await h.message({ type: "get-popup-state", url });
     assert.equal(state.browser, null, url);
+    assert.equal(state.userAgent, null, url);
   }
   const disabled = harness({ saved: settings({ enabled: false }) });
   const state = await disabled.message({ type: "get-popup-state", url: "https://google.com" });
@@ -492,9 +607,11 @@ test("unrecognized host platforms retain native identity unless the user selects
   assert.deepEqual(h.rules(), []);
   const native = await h.message({ type: "get-popup-state", url: "https://google.com" });
   assert.equal(native.browser, null);
+  assert.equal(native.userAgent, null);
   const saved = await h.message({ type: "update-settings", patch: { platformMode: "windows" } });
   assert.equal(saved.ok, true);
   const explicit = await h.message({ type: "get-popup-state", url: "https://google.com" });
   assert.equal(explicit.browser, "chrome");
+  assert.match(explicit.userAgent, /Windows NT 10\.0; Win64; x64\).*Chrome\/140\.0\.0\.0/);
   assert.equal(explicit.platformLabel, "Windows");
 });

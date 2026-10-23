@@ -1,6 +1,6 @@
 # Browser Preference Switcher Privacy Policy
 
-Effective October 14, 2026. This policy describes Browser Preference Switcher version 0.1.1 and the source code in this repository.
+Effective October 15, 2026. This policy describes Browser Preference Switcher version 0.1.2 and the source code in this repository.
 
 Browser Preference Switcher changes the `User-Agent` and selected User-Agent Client Hint request headers for a small, curated set of HTTPS destinations. It keeps the host browser's rendering engine and page JavaScript identity unchanged. On first use, and for a legacy installation that has not recorded consent, the popup shows a data-use notice. Before the user clicks **Agree and enable**, the extension does not inspect the active-tab address or device operating system, activate identity-changing header rules, or request vendor release data. After that consent, automatic switching starts enabled, can be turned off in the popup, and uses the device's actual operating system unless the user selects another visible setting.
 
@@ -10,7 +10,7 @@ The consent notice is versioned. Version 1 is stored as `privacyConsentVersion` 
 
 ### Active tab URL and hostname
 
-After the user has accepted the current consent notice, opening the extension popup temporarily reads the active tab URL to determine whether a curated HTTPS rule matches and to show the current hostname and configured identity. The popup displays the hostname only. The full URL is not written to extension storage, sent to the developer, or used to build a browsing history. Page content, cookies, form data, passwords, authentication tokens, downloads, and browser history are not read by the extension.
+After the user has accepted the current consent notice, opening the extension popup temporarily reads the active tab URL to determine whether a curated HTTPS rule matches and to show the current hostname and configured identity. The popup displays the hostname rather than the full URL. It also displays the configured User-Agent header built from the selected OS and cached browser versions; displaying this header requires no additional user data or network request. The full URL is not written to extension storage, sent to the developer, or used to build a browsing history. Page content, cookies, form data, passwords, authentication tokens, downloads, and browser history are not read by the extension.
 
 Before consent is accepted, the extension does not read the active-tab URL or query the device operating system for feature handling, activate identity-changing header rules, or make automatic or manual vendor-version requests. It may read local extension storage to determine whether consent is current and to preserve legacy settings; that local read does not inspect the active tab or contact a vendor.
 

@@ -13,7 +13,7 @@
 
       <section id="consent-card" class="consent-card" aria-labelledby="consent-heading" hidden>
         <h2 id="consent-heading">Before you continue</h2>
-        <p>This extension reads the active tab’s address locally to show its site and configured request identity. Addresses are not stored or sent to the developer. Your settings stay on this device. Release checks contact Google, Microsoft, and Apple; those servers receive normal connection details. It changes request headers on selected HTTPS sites, not the browser engine or JavaScript identity.</p>
+        <p id="consent-disclosure">This extension reads the active tab’s address locally to show its site and configured request identity. Addresses are not stored or sent to the developer. Your settings stay on this device. Release checks contact Google, Microsoft, and Apple; those servers receive normal connection details. It changes request headers on selected HTTPS sites, not the browser engine or JavaScript identity.</p>
         <button id="accept-consent" type="button">Agree and enable</button>
         <p id="consent-message" class="message" role="status" aria-live="polite" aria-atomic="true"></p>
       </section>
@@ -22,7 +22,13 @@
         <span class="eyebrow">Configured request identity</span>
         <strong id="identity">Loading…</strong>
         <span id="reason" class="muted"></span>
+        <div id="user-agent-section" class="user-agent" aria-labelledby="user-agent-label" hidden>
+          <span id="user-agent-label" class="eyebrow">User-Agent request header</span>
+          <code id="user-agent"></code>
+        </div>
       </section>
+
+      <button id="retry-state" class="state-retry" type="button" hidden>Retry loading settings</button>
 
       <label class="toggle-row" for="enabled">
         <span>Automatic switching</span>

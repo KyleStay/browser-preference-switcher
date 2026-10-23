@@ -1,6 +1,8 @@
+> Current 0.1.3 landing validation: source/package checks pass; live browser checks are UNRUN at the denied runner boundary. Earlier browser results below are historical evidence, not validation of this candidate.
+
 # Review and continuation notes
 
-Reviewed October 14, 2026. Current extension version: 0.1.1.
+Reviewed October 15, 2026. Current extension version: 0.1.2.
 
 ## Project import
 
@@ -22,13 +24,13 @@ The original commit `c8864b983764a38dd5a107488795ed319bcf3df6` and product decis
 
 ## Verification and limits
 
-`npm run ci:checks` passes 65 dependency-free regression checks covering service-worker rules, permission coverage, version parsing/caching, concurrency, rollback, daily freshness, consent-before-handling, popup error/success flows, offline vendor fixtures, local CI itself, and deterministic store packaging. JavaScript syntax checks and diff validation for tracked, staged, and untracked files pass.
+`npm run ci:checks` passes 77 dependency-free regression checks covering service-worker rules, permission coverage, version parsing/caching, concurrency, rollback, daily freshness, consent-before-handling, popup error/success flows, offline vendor fixtures, local CI itself, and deterministic store packaging. JavaScript syntax checks and diff validation for tracked, staged, and untracked files pass.
 
-Live browser verification is **blocked**, not passed. Both the shell and Node REPL reject localhost socket binding; the supplied isolated Chrome runner fails before launch. No browser was launched, no screenshot was generated, and all task-owned probe directories were removed. Zero task-owned Chrome processes or disposable profiles remain.
+Full local CI passed on October 15, 2026, including the isolated Chrome runtime stage and 77 code checks. Real consent and accepted-state popup screenshots were captured at 1280 × 800. Cleanup verified zero owned Chrome processes and disposable profiles. The initial sandbox localhost restriction was resolved by running the authorized test outside that restricted shell.
 
 The full `npm run ci` pipeline now runs all verification locally, including the browser stage. `npm run ci:checks` explicitly omits browser verification; `npm run ci:browser` repeats only that stage. There is no hosted CI workflow. See [local CI instructions](local-ci.md).
 
-Browser checks require an environment that permits localhost binding and has Chrome for Testing, Playwright, and the isolated Chrome runner. They use temporary extension copies with deterministic local vendor responses: one retains the production manifest, then another adds localhost permission for an owned header-echo fixture. The fixture rule changes destination/scheme but retains production header actions. The shipped extension is unchanged. Production rule matching, popup interactions, refresh parsing, and fixture headers are separate assertions. Cleanup closes Chrome through CDP, verifies its owned processes exited, stops the fixture server, and removes the profiles. Startup-failure and cleanup paths were exercised here; the successful browser path has not been executed.
+Browser checks require an environment that permits localhost binding and has Chrome for Testing, Playwright, and the isolated Chrome runner. They use temporary extension copies with deterministic local vendor responses: one retains the production manifest, then another adds localhost permission for an owned header-echo fixture. The fixture rule changes destination/scheme but retains production header actions. The shipped extension is unchanged. Production rule matching, popup interactions, refresh parsing, and fixture headers are separate assertions. Cleanup closes Chrome through CDP, verifies its owned processes exited, stops the fixture server, and removes the profiles. Startup-failure, successful runtime, and cleanup paths were exercised here.
 
 Brave remains the intended host browser. Runtime behavior in Brave and signed-in Google, Microsoft, and iCloud sessions still require verification. Synthetic Safari headers do not provide WebKit; request destinations outside the curated domain list remain native.
 
@@ -48,11 +50,33 @@ Additional fixes from this pass:
 
 Concurrent tab reloads intentionally use the latest global settings. A reload is not a snapshot of a previous global setting: subsequent requests always use the currently installed rules.
 
-The browser harness's successful runtime path remains unexecuted in this environment. The expanded checks do not imply a Chrome, Brave, or authenticated-site runtime pass.
+The isolated Chrome runtime path now passes, including actual request headers at an owned local server. It does not imply a Brave or authenticated-site compatibility pass.
+
+## Apple-site Windows preference update
+
+Apple and iCloud domains now use Chrome when the effective reported OS is Windows, including device detection in automatic mode and explicit Windows selection. Popup state and installed request rules share one resolver. Regression coverage includes Apple Maps and subdomains, domain boundaries, OS overrides, Windows UA/client hints, and consent/disabled behavior. All 77 local code checks passed. The browser smoke harness now checks the Windows Apple rules and restores Safari in macOS automatic mode; that real browser stage now passes in isolated Chrome.
 
 ## Recommended next work
 
-1. Complete runtime checks in Chrome for Testing, then manually exercise the intended Brave workflows, including authenticated iCloud, Microsoft 365, and Google sign-in. Record compatibility gains and any regressions before expanding the rule catalog.
+1. Manually exercise the intended Brave workflows, including authenticated iCloud, Microsoft 365, and Google sign-in. Record compatibility gains and any regressions before expanding the rule catalog.
 2. Add per-site exceptions and manual browser selection. A site that works better with native headers needs an easy override; manual selection would also make the existing Firefox profile useful.
 3. Add a diagnostics view showing effective configured headers, cached versions, source-specific errors, and host-access status. This would explain most compatibility and refresh failures without opening DevTools.
-4. Prepare extension icons and a clean distribution folder or ZIP with versioned release notes. Keep the extension dependency-free and omit tests/development notes from the distributable.
+4. Keep the prepared icons, clean upload ZIP, listing copy, and real screenshots synchronized with future releases.
+
+## Screenshot capture repairs
+
+- Canonicalized macOS temporary/profile paths so `/var` and `/private/var` aliases compare as one directory. Cleanup recognizes the exact owned profile argument and rejects sibling prefixes.
+- Kept optional Playwright loading and process signal handlers out of dependency-free test imports.
+- Fixed popup CSS overriding the consent panel's `hidden` attribute. Real browser assertions now require the notice to be visible before consent and invisible afterward.
+- Visually inspected both actual Chrome screenshots and embedded them in the standalone publishing guide and kit.
+
+## User-Agent display and UX review — 0.1.2
+
+Three Luna xhigh workstreams implemented and independently reviewed the popup state, UI, and error paths. Confirmed fixes:
+
+- The popup shows the full configured User-Agent generated by the same function as the request rules. Native/off states explain that no override applies, and failures clear stale header text.
+- Successful acceptance hides the complete consent prompt, preserves acceptance across a follow-up read failure, restores keyboard focus, and explains that existing matched pages need reloading.
+- A dedicated settings retry recovers without refreshing vendor data, keeps last confirmed preferences visible but disabled while unavailable, and restores keyboard focus afterward. Initial preference-loading errors no longer display a misleading consent request.
+- Source failures name the browser/platform and explain the cached fallback. First-use cache status is clearer; long strings wrap at 310 px.
+
+All 77 code checks and real isolated Chrome tests pass. Browser checks compare the displayed UA with installed headers, verify Windows changes and clearing when off, inject a state-read failure and recover through the new action, verify source error details, test narrow layouts, and check actual consent visibility and focus. Both store screenshots were recaptured and visually inspected. Cleanup confirmed zero owned Chrome processes or disposable profiles.
